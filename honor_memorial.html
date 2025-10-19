@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>명예·추모관</title>
+<style>
+  :root{--bg1:#ff9966;--bg2:#ff5e62}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:linear-gradient(90deg,var(--bg1),var(--bg2));color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 14px}
+  a.btn{display:inline-block;background:#0b1020;color:#fff;padding:10px 14px;border-radius:12px;text-decoration:none;font-weight:700}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+  .toolbar select,.toolbar input{padding:8px 10px;border-radius:10px;border:0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:12px}
+  .card{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.2);border-radius:16px;padding:14px}
+  .title{font-weight:900;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .name{font-weight:900}
+  .small{font-size:12px;opacity:.9}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;background:#0005;margin-left:auto;font-size:12px}
+  .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .mini{padding:6px 10px;border-radius:10px;border:0;cursor:pointer}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <h1 style="margin:6px 0">🏛️ 명예·추모관</h1>
+      <a class="btn" href="index.html?v=0.27">⬅️ 메인</a>
+    </div>
+
+    <div id="motto" class="small" style="margin:8px 0 12px;font-weight:700">
+      명예와 헌신으로 지켜낸 발자취를 기억합니다.
+    </div>
+
+    <div class="toolbar">
+      <select id="fEnding">
+        <option value="">전체 엔딩</option>
+        <option>명예퇴직</option>
+        <option>계급정년퇴직</option>
+        <option>정년퇴직</option>
+        <option>순직</option>
+        <option>파면</option>
+        <option>의원면직</option>
+        <option>의원면직-자산가</option>
+      </select>
+      <select id="sortBy">
+        <option value="new">정렬: 최신순</option>
+        <option value="rank">정렬: 계급순</option>
+        <option value="name">정렬: 이름순</option>
+      </select>
+      <input id="q" placeholder="검색: 이름/엔딩/계급/조직/업적" />
+    </div>
+
+    <div class="grid" id="list"></div>
+  </div>
+
+<script>
+(function(){
+  const $=s=>document.querySelector(s);
+  const list=$("#list");
+  const fEnding=$("#fEnding");
+  const sortBy=$("#sortBy");
+  const q=$("#q");
+  const RANKS=["의경","순경","경장","경사","경위","경감","경정","총경","경무관","치안감","치안정감","치안총감"];
+  const fmt=(d)=> new Date(d).toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'});
+  const fmtYM=(months)=>{ const y=Math.floor((months||0)/12), m=(months||0)%12; return m===0? `${String(y).padStart(2,'0')}년` : `${String(y).padStart(2,'0')}년 ${String(m).padStart(2,'0')}개월`; };
+
+  function colorByEnding(endTitle){
+    switch(endTitle){
+      case "명예퇴직": return "#2e7d32";
+      case "계급정년퇴직": return "#1565c0";
+      case "정년퇴직": return "#0d47a1";
+      case "순직": return "#b71c1c";
+      case "파면": return "#4e342e";
+      case "의원면직": return "#6a1b9a";
+      case "의원면직-자산가": return "#f9a825";
+      default: return "#263238";
+    }
+  }
+  function officerEmojiByGender(g){
+    if(g==="F") return "👮‍♀️";
+    if(g==="M") return "👮‍♂️";
+    return "👮";
+  }
+
+  // ---- 텍스트 줄바꿈 유틸(가독성 개선) ----
+  function wrapLines(ctx, text, x, y, maxWidth, lineHeight){
+    const words = String(text||"").split(/\s+/);
+    let line = "", outY=y;
+    for(let i=0;i<words.length;i++){
+      const test=line? line+" "+words[i] : words[i];
+      const w=ctx.measureText(test).width;
+      if(w>maxWidth && line){
+        ctx.fillText(line, x, outY);
+        outY += lineHeight;
+        line = words[i];
+      } else {
+        line = test;
+      }
+    }
+    if(line){ ctx.fillText(line, x, outY); outY += lineHeight; }
+    return outY;
+  }
+
+  // ---- 카드 이미지 저장용 캔버스 (가독성 향상, 레티나 스케일) ----
+  function drawCardToCanvas(it){
+    // 기본 크기 + DPR 스케일
+    const DPR = Math.max(1, Math.min(2, (window.devicePixelRatio||1)));
+    const W=900, H=560, pad=28, inner=pad+14;
+    const c=document.createElement('canvas'); c.width=W*DPR; c.height=H*DPR;
+    const g=c.getContext('2d'); g.scale(DPR, DPR);
+
+    // 배경 그라데이션 + 유리 카드
+    const color = colorByEnding(it.endTitle||"");
+    const grad=g.createLinearGradient(0,0,W,H);
+    grad.addColorStop(0,color); grad.addColorStop(1,"#000");
+    g.fillStyle=grad; g.fillRect(0,0,W,H);
+
+    // 유리 카드 배경
+    g.fillStyle='rgba(255,255,255,0.92)';
+    g.strokeStyle='rgba(0,0,0,0.08)';
+    g.lineWidth=2;
+    const r=18;
+    g.beginPath();
+    g.moveTo(pad+r,pad);
+    g.arcTo(W-pad,pad, W-pad, H-pad, r);
+    g.arcTo(W-pad, H-pad, pad, H-pad, r);
+    g.arcTo(pad, H-pad, pad, pad, r);
+    g.arcTo(pad, pad, W-pad, pad, r);
+    g.closePath(); g.fill(); g.stroke();
+
+    // 헤더
+    g.fillStyle='#111';
+    g.font='700 30px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    g.fillText('명예·추모 카드', inner, inner+20);
+
+    // 엔딩 태그
+    const tag = String(it.endTitle||'엔딩');
+    g.font='700 16px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    const tagW = g.measureText(tag).width + 20;
+    const tagX = W - pad - tagW;
+    const tagY = inner+4;
+    g.fillStyle=color;
+    g.fillRect(tagX, tagY, tagW, 28);
+    g.fillStyle='#fff';
+    g.fillText(tag, tagX+10, tagY+20);
+
+    // 본문
+    g.fillStyle='#111';
+    g.font='16px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    const lineH = 24;
+    let y=inner+60;
+
+    const head = `${officerEmojiByGender(it.gender||"")} ${it.name||''}`;
+    g.font='700 22px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    g.fillText(head, inner, y);
+    y += 12 + lineH;
+
+    g.font='16px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    const lines = [
+      `임용: ${fmt(it.startDate)}  ${it.org||''}  시작계급: ${it.entryRank||''}`,
+      `현재 계급: ${it.currentRank||''}`,
+      `근무기간: ${fmtYM(it.months||0)}`,
+      `마지막 보유 골드: ${it.finalGold||0}`
+    ];
+    lines.forEach(t=>{ y = wrapLines(g, t, inner, y, W - inner - pad, lineH); });
+
+    // 업적
+    if(it.achievements && it.achievements.length){
+      g.font='700 16px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+      y = wrapLines(g, '업적:', inner, y+6, W - inner - pad, lineH);
+      g.font='14px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+      y = wrapLines(g, '• ' + it.achievements.join(' · '), inner, y-2, W - inner - pad, lineH);
+    }
+
+    // 구분선
+    g.strokeStyle='rgba(0,0,0,0.12)'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(inner, y+6); g.lineTo(W-pad, y+6); g.stroke();
+    y += 16;
+
+    // 승진/강등 이력
+    g.font='700 16px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    y = wrapLines(g, '승진/강등 이력', inner, y, W - inner - pad, lineH);
+    g.font='14px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    const promos=(it.changeLog||[]);
+    const promoText = promos.length ? promos.slice(0,8).map(s=>'• '+s).join('  ') : '기록 없음';
+    y = wrapLines(g, promoText, inner, y-2, W - inner - pad, lineH);
+
+    // 제압 목록
+    g.font='700 16px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    y = wrapLines(g, '제압 목록', inner, y+6, W - inner - pad, lineH);
+    g.font='14px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    const kills = Object.entries(it.defeated||{}).map(([k,v])=>`${k}: ${v}명`);
+    const killText = kills.length ? kills.join(' · ') : '기록 없음';
+    wrapLines(g, killText, inner, y-2, W - inner - pad, lineH);
+
+    return c;
+  }
+  function downloadCard(it){
+    const c=drawCardToCanvas(it);
+    const a=document.createElement('a');
+    a.download=`memorial_${it.id||Date.now()}.png`; // PNG 저장
+    a.href=c.toDataURL('image/png');
+    document.body.appendChild(a); a.click(); a.remove(); c.remove();
+  }
+  function deleteCardWithRule(it){
+    // 순직/의원면직은 즉시 삭제, 그 외는 확인 후
+    const fast = (it.endTitle==="순직" || it.endTitle==="의원면직");
+    if(!fast){
+      if(!confirm("정말 삭제하시겠습니까?")) return;
+    }
+    try{
+      const a=JSON.parse(localStorage.getItem("police_memorials")||"[]");
+      const b=a.filter(x=>x.id!==it.id);
+      localStorage.setItem("police_memorials", JSON.stringify(b));
+      location.reload();
+    }catch(e){}
+  }
+
+  function getData(){ try{ return JSON.parse(localStorage.getItem("police_memorials")||"[]"); }catch(e){ return []; } }
+  function matchesQuery(it, needle){
+    const t=[it.name,it.endTitle,it.currentRank,it.org,(it.achievements||[]).join(' ')].join(' ').toLowerCase();
+    return t.includes(needle.toLowerCase());
+  }
+  function render(){
+    let arr=getData();
+    if(fEnding.value) arr=arr.filter(x=>x.endTitle===fEnding.value);
+    if(q.value.trim()) arr=arr.filter(x=>matchesQuery(x,q.value.trim()));
+    if(sortBy.value==="new"){ arr.sort((a,b)=>b.id-a.id); }
+    else if(sortBy.value==="rank"){ arr.sort((a,b)=>RANKS.indexOf(b.currentRank)-RANKS.indexOf(a.currentRank)); }
+    else if(sortBy.value==="name"){ arr.sort((a,b)=> (a.name||'').localeCompare(b.name||'')); }
+
+    if(!arr.length){ list.innerHTML='<div class="small">조건에 맞는 기록이 없습니다.</div>'; return; }
+
+    list.innerHTML=arr.map(it=>{
+      const endTitle = it.endTitle || '엔딩';
+      const promos = (it.changeLog||[]).map(s=>`• ${s}`).join("<br>") || "기록 없음";
+      const kills = Object.entries(it.defeated||{}).map(([k,v])=>`${k}: ${v}명`).join("<br>") || "기록 없음";
+      const startLine = `임용 : ${fmt(it.startDate)} ${it.org||''} ${it.entryRank||''}`;
+      const period = `근무기간 : ${fmtYM(it.months||0)}`;
+      const current = `현재 계급 : ${it.currentRank||''}`;
+      const ach = (it.achievements||[]);
+      const achHTML = ach.length ? `<div class="small" style="margin-top:6px"><b>업적 :</b> ${ach.join(' · ')}</div>` : "";
+      const border = colorByEnding(endTitle);
+      const emo = officerEmojiByGender(it.gender||"");
+      const payload = encodeURIComponent(JSON.stringify(it));
+      return `
+        <div class="card" style="border-color:${border}; box-shadow:0 0 0 2px ${border}20 inset;">
+          <div class="title"><span class="name">${emo} ${it.name||'이름없음'}</span><span class="tag" style="background:${border}">${endTitle}</span></div>
+          <div>${startLine}</div>
+          <div>${current}</div>
+          <div>${period}</div>
+          <div>마지막 보유 골드 : ${it.finalGold||0}</div>
+          ${achHTML}
+          <hr style="border-color:rgba(255,255,255,.25);margin:10px 0">
+          <div class="small" style="font-weight:800;margin-bottom:4px">승진/강등 이력</div>
+          <div class="small">${promos}</div>
+          <div class="small" style="font-weight:800;margin:8px 0 4px">제압 목록</div>
+          <div class="small">${kills}</div>
+          <div class="btnrow">
+            <button class="mini" onclick='(function(){ const it=JSON.parse(decodeURIComponent("${payload}")); (${downloadCard.toString()})(it); })()'>📥 이미지 저장</button>
+            <button class="mini" style="background:#300;color:#fff" onclick='(function(){ const it=JSON.parse(decodeURIComponent("${payload}")); (${deleteCardWithRule.toString()})(it); })()'>🗑 삭제</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  [fEnding,sortBy,q].forEach(el=>el.addEventListener('input',render));
+  render();
+})();
+</script>
+</body>
+  </html>

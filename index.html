@@ -45,12 +45,10 @@
         <h1>🎲 경찰 양성</h1>
         <p class="lede">전투로 사건을 제압하고, 연차에 맞춰 <b>승진 도전</b>에 성공하세요.</p>
         <div class="cta">
-          <!-- v 파라미터 0.27로 통일 -->
           <a class="btn" href="police_training_game.html?v=0.27">게임 시작</a>
           <a class="btn" href="honor_memorial.html?v=0.27">명예·추모관</a>
         </div>
       </div>
-
       <div class="glass">
         <div class="tips-head">
           <h3 style="margin:0">📝 게임 팁</h3>
@@ -68,17 +66,13 @@
       </div>
     </div>
   </div>
-
   <div class="footer"><div class="ver">v0.27</div></div>
-
 <script>
 (function(){
   const btn=document.getElementById('tips-toggle');
   const body=document.getElementById('tips-body');
   if(btn&&body){
-    btn.addEventListener('click', ()=>{ 
-      body.style.display=(body.style.display==='none'||body.style.display==='')?'block':'none'; 
-    });
+    btn.addEventListener('click', ()=>{ body.style.display=(body.style.display==='none'||body.style.display==='')?'block':'none'; });
   }
 })();
 </script>
